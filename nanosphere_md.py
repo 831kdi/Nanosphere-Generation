@@ -4,14 +4,14 @@ Workflow for generating, relaxing, and running MD on nanospheres using Packmol a
 
 Workflow:
 1. Generate a nanosphere (default 1.5 nm diameter) with a given chemical composition (e.g. "Rh3P2")
-   by filling the sphere with atoms (number computed from a default atomic volume of 15 Å³/atom).
+   by filling the sphere with atoms.
    Packmol is used to pack atoms while preserving the composition.
    The number of atoms generated is logged.
-2. Repeat (1) 100 times; for each, relax the structure for a given number of steps (default 50) 
-   using the MatterSim force field, then compute the energy per atom.
+2. Repeat 1. 100 times; for each, relax the structure for a given number of steps (default 50) 
+   using the Mace-MP force field, then compute the energy per atom (eV/atom).
    Sort the 100 nanospheres by energy per atom and select the 10 lowest–energy ones.
 3. For each of these 10 nanospheres, embed it in a cubic vacuum cell whose side length is:
-      cell_side = (nanosphere_diameter) + 2*15 Å.
+      cell_side = (nanosphere_diameter) + 2*2 Å. (Too big vacuum cause errors in DFT calculation)
    Save each structure as a CIF file.
 4. Run an NVT MD simulation on each embedded nanosphere using the ASE environment with:
    - Langevin thermostat (default; user–option available)
@@ -29,8 +29,8 @@ Workflow:
 Usage (via Fire):
     python nanosphere_md.py --composition Rh3P2
 
-Author: [Your Name]
-Date: [Today’s Date]
+Author: Dongin Kim
+Date: 11/Aug/2025
 """
 
 import os
@@ -68,8 +68,7 @@ def parse_composition(comp_str: str) -> Dict[str, int]:
 
 def compute_total_atoms(sphere_diameter: float, atomic_volume: float = 15.0) -> int:
     """
-    Compute total number of atoms in a sphere of given diameter (in Å)
-    assuming an atomic volume (default 15 Å³/atom).
+    Compute total number of atoms in a sphere of given diameter (in Å).
     """
     radius = sphere_diameter / 2.0
     volume = (4.0/3.0) * math.pi * (radius**3)
@@ -169,7 +168,7 @@ def relax_structure(atoms: Atoms,
     The user must provide a calculator (default is MatterSim).
     """
     if calculator is None:
-        # Import the MatterSim (or MACE) calculator; adjust as needed.
+        # Import the MACE calculator
         from mace.calculators import mace_mp
         calculator = mace_mp(device="cpu", default_dtype="float32")
     atoms.calc = calculator
@@ -198,11 +197,6 @@ from ase import units
 import numpy as np
 
 def rescale_velocities(atoms, temperature_K):
-    """
-    Manually rescales atom velocities to match the target temperature.
-    This function replaces ase.md.velocitydistribution.rescale_velocities
-    for compatibility with older ASE versions.
-    """
     from ase.units import kB
     velocities = atoms.get_velocities()
     masses = atoms.get_masses()[:, np.newaxis]  # shape (N, 1)
@@ -229,9 +223,12 @@ def run_md_simulation(atoms,
 
     if calculator is None:
         from mattersim.forcefield import MatterSimCalculator
-        calculator = MatterSimCalculator(load_path="/home/intern_02/Dongin/mattersim/pretrained_models/mattersim-v1.0.0-5M.pth", device="cpu")
+        calculator = MatterSimCalculator(load_path="/home/intern_02/Dongin/mattersim/pretrained_models/mattersim-v1.0.0-5M.pth", device="cpu") 
     atoms.calc = calculator
+    #change the load_path according to where you downloaded the mattersim force field.
+    #the device was selected as cpu for default as this calculation does not require extensive computational power. However gpu cuda can be applied as well.
 
+                         
     # Assign initial velocities
     MaxwellBoltzmannDistribution(atoms, temperature_K=T_start)
 
