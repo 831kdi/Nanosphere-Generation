@@ -191,22 +191,67 @@ def embed_in_vacuum(atoms: Atoms, nanosphere_diameter: float = 15.0, buffer: flo
     return atoms
 
 
-from ase.md.langevin import Langevin
-from ase.md.velocitydistribution import MaxwellBoltzmannDistribution
-from ase import units
-import numpy as np
+def run_md_simulation(atoms,
+                      dt_fs=0.25,
+                      t_heat_ps=10.0,
+                      t_hold_ps=12.0,
+                      t_cool_ps=6.0,
+                      T_start=330.0,
+                      T_end=800.0,
+                      T_final=300.0,
+                      calculator=None,
+                      logfile="md.log"):
+    # calculator
+    if calculator is None:
+        from mattersim.forcefield import MatterSimCalculator
+        calculator = MatterSimCalculator(
+            load_path="/home/intern_02/Dongin/mattersim/pretrained_models/mattersim-v1.0.0-5M.pth",
+            device="cpu"
+        )
+    atoms.calc = calculator
 
-def rescale_velocities(atoms, temperature_K):
-    from ase.units import kB
-    velocities = atoms.get_velocities()
-    masses = atoms.get_masses()[:, np.newaxis]  # shape (N, 1)
+    # init velocities
+    MaxwellBoltzmannDistribution(atoms, temperature_K=T_start)
+    Stationary(atoms)
 
-    kinetic_energy = 0.5 * np.sum(masses * velocities**2)
-    current_temp = 2 * kinetic_energy / (3 * len(atoms) * kB)
+    # steps
+    n_heat = max(1, int(t_heat_ps * 1000.0 / dt_fs))
+    n_hold = max(1, int(t_hold_ps * 1000.0 / dt_fs))
+    n_cool = max(1, int(t_cool_ps * 1000.0 / dt_fs))
 
-    if current_temp > 1e-6:  # avoid divide-by-zero
-        scale = np.sqrt(temperature_K / current_temp)
-        atoms.set_velocities(velocities * scale)
+    # Langevin (note friction units!)
+    dyn = Langevin(atoms,
+                   dt_fs * units.fs,
+                   temperature_K=T_start,
+                   friction=0.02 / units.fs,   # e.g., 0.02 fs^-1
+                   logfile=logfile)
+    # trajectory
+    traj = Trajectory("md.traj", "w", atoms)
+
+    # Heating
+    for step in range(n_heat):
+        T_target = T_start + (T_end - T_start) * ((step + 1) / n_heat)
+        dyn.set_temperature(temperature_K=T_target)   # <-- FIX
+        dyn.run(1)
+        if step % 10 == 0:
+            traj.write()
+
+    # Hold
+    dyn.set_temperature(temperature_K=T_end)          # <-- FIX
+    dyn.run(n_hold)
+
+    # Cooling
+    for step in range(n_cool):
+        T_target = T_end - (T_end - T_final) * ((step + 1) / n_cool)
+        dyn.set_temperature(temperature_K=T_target)   # <-- FIX
+        dyn.run(1)
+        if step % 10 == 0:
+            traj.write()
+
+    traj.close()
+    return atoms
+                         
+#Main Function Below
 
 def run_md_simulation(atoms,
                       dt_fs=0.5,
