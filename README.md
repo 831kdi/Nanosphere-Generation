@@ -1,4 +1,4 @@
-# Nanosphere-Generation
+# Nanosphere-Generation (test)
 # Nanosphere MD Workflow & Surface Rh Analysis
 
 This repository provides three Python scripts for **nanoparticle generation/relaxation/molecular dynamics (MD)**, **surface Rh atom identification**, and **dependency checking**.  
